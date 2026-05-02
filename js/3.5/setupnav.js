@@ -65,6 +65,7 @@ if (VersionCheck("3.7.1")) {
 }
 tempString="'/evlog'";
 document.write('<button name=Log onClick=window.location.href=' + tempString + '>' + str_Log + '</button>');
+document.write('<button name=Backup onClick=openBackupModal()>' + str_Backup + '</button>');
 document.write('</td><td align=center style=width:15%;>');
 if (window.location.pathname != "/dict") {
 	tempString="window.location.href='/save'";
@@ -150,3 +151,9 @@ document.getElementById("BoosterText").style.display = "none";
 window.addEventListener("load", function(){
     window.scrollTo(x, y);
 });
+
+(function () {
+	var s = document.createElement('script');
+	s.src = host + 'backup.js';
+	document.head.appendChild(s);
+})();
