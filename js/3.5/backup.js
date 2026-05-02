@@ -177,9 +177,7 @@
 		document.body.removeChild(a);
 		URL.revokeObjectURL(a.href);
 
-		btnStart.disabled = false;
-		document.getElementById('bk_cbJS').disabled = false;
-		document.getElementById('bk_cbLog').disabled = false;
+		setTimeout(closeModal, 1500);
 	}
 
 	function closeModal() {
