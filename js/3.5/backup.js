@@ -5,6 +5,20 @@
 	var _modal = null;
 	var _cancelFlag = false;
 
+	var JS_FILES = [
+		'js/chart.js', 'js/config.js', 'js/dict.js', 'js/dygraph-combined.js',
+		'js/dygraph-combined.js.map', 'js/dygraph-options.js', 'js/dygraph.css',
+		'js/dygraph.js', 'js/dygraph.min.js', 'js/emanager.js', 'js/evlog.js',
+		'js/favicon.ico', 'js/func.js', 'js/groups.js', 'js/index.js',
+		'js/input.js', 'js/jszip.min.js', 'js/load.js', 'js/nav.js',
+		'js/output.js', 'js/pcaout.js', 'js/save.js', 'js/setup.js',
+		'js/setupnav.js', 'js/setup_up.js', 'js/style.css', 'js/styleBlue.css',
+		'js/timer.js', 'js/users.js',
+		'js/lang/DE.js', 'js/lang/DE.json', 'js/lang/EN.js', 'js/lang/EN.json',
+		'js/lang/FR.js', 'js/lang/FR.json', 'js/lang/HU.js', 'js/lang/HU.json',
+		'js/lang/langinfo.json'
+	];
+
 	function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
 	function sleep(ms) {
@@ -25,6 +39,7 @@
 	function buildConfigFileList() {
 		var list = [];
 
+		list.push('favicon.ico');
 		list.push('htm/nav.htm');
 		list.push('htm/setupnav.htm');
 
@@ -63,7 +78,18 @@
 		return false;
 	}
 
-	async function scanEventLogs(zip, progressEl, statusEl) {
+	async function fetchPhase(zip, files, progressEl, statusEl, pctFrom, pctTo) {
+		var total = files.length;
+		for (var i = 0; i < files.length; i++) {
+			if (_cancelFlag) return;
+			statusEl.textContent = files[i] + ' (' + (i + 1) + '/' + total + ')';
+			var ok = await fetchToZip(zip, files[i], files[i]);
+			progressEl.value = Math.round(pctFrom + (i + 1) / total * (pctTo - pctFrom));
+			await sleep(ok ? 300 : 50);
+		}
+	}
+
+	async function scanEventLogs(zip, progressEl, statusEl, pctFrom) {
 		var consecutiveMisses = 0;
 		var d = new Date();
 		var day = 0;
@@ -73,7 +99,7 @@
 			var path = 'ev_log/' + filename;
 
 			statusEl.textContent = path;
-			progressEl.value = Math.min(99, 50 + day * 0.07);
+			progressEl.value = Math.min(99, pctFrom + day * 0.07);
 
 			var ok = await fetchToZip(zip, path, path);
 			consecutiveMisses = ok ? 0 : consecutiveMisses + 1;
@@ -86,15 +112,16 @@
 
 	async function startBackup() {
 		_cancelFlag = false;
+		var includeJS   = document.getElementById('bk_cbJS').checked;
 		var includeLogs = document.getElementById('bk_cbLog').checked;
 
 		var progressEl = document.getElementById('bk_progress');
 		var statusEl   = document.getElementById('bk_status');
 		var btnStart   = document.getElementById('bk_btnStart');
-		var cbLog      = document.getElementById('bk_cbLog');
 
 		btnStart.disabled = true;
-		cbLog.disabled = true;
+		document.getElementById('bk_cbJS').disabled = true;
+		document.getElementById('bk_cbLog').disabled = true;
 		progressEl.style.display = 'block';
 		statusEl.textContent = '';
 
@@ -102,29 +129,29 @@
 			await loadJSZip();
 		} catch (e) {
 			statusEl.textContent = 'JSZip load error';
-			btnStart.disabled = false;
-			cbLog.disabled = false;
+			resetModal();
 			return;
 		}
 
 		if (_cancelFlag) return;
 
 		var zip = new JSZip();
-		var configFiles = buildConfigFileList();
-		var total = configFiles.length;
 
-		for (var i = 0; i < configFiles.length; i++) {
-			if (_cancelFlag) return;
-			statusEl.textContent = configFiles[i] + ' (' + (i + 1) + '/' + total + ')';
-			var ok = await fetchToZip(zip, configFiles[i], configFiles[i]);
-			progressEl.value = includeLogs
-				? Math.round((i + 1) / total * 50)
-				: Math.round((i + 1) / total * 100);
-			await sleep(ok ? 300 : 50);
+		// Progress felosztás a kiválasztott fázisok szerint
+		var phases = 1 + (includeJS ? 1 : 0) + (includeLogs ? 1 : 0);
+		var pct = 0;
+		var step = Math.floor(100 / phases);
+
+		await fetchPhase(zip, buildConfigFileList(), progressEl, statusEl, pct, pct + step);
+		pct += step;
+
+		if (includeJS && !_cancelFlag) {
+			await fetchPhase(zip, JS_FILES, progressEl, statusEl, pct, pct + step);
+			pct += step;
 		}
 
 		if (includeLogs && !_cancelFlag) {
-			await scanEventLogs(zip, progressEl, statusEl);
+			await scanEventLogs(zip, progressEl, statusEl, pct);
 		}
 
 		if (_cancelFlag) return;
@@ -151,7 +178,8 @@
 		URL.revokeObjectURL(a.href);
 
 		btnStart.disabled = false;
-		cbLog.disabled = false;
+		document.getElementById('bk_cbJS').disabled = false;
+		document.getElementById('bk_cbLog').disabled = false;
 	}
 
 	function closeModal() {
@@ -162,18 +190,36 @@
 
 	function resetModal() {
 		_cancelFlag = false;
-		var els = {
-			progress : document.getElementById('bk_progress'),
-			status   : document.getElementById('bk_status'),
-			btnStart : document.getElementById('bk_btnStart'),
-			cbLog    : document.getElementById('bk_cbLog'),
-			warnLog  : document.getElementById('bk_warnLog')
-		};
-		if (els.progress) { els.progress.style.display = 'none'; els.progress.value = 0; }
-		if (els.status)   els.status.textContent = '';
-		if (els.btnStart) { els.btnStart.disabled = false; els.btnStart.textContent = str_BackupStart; }
-		if (els.cbLog)    { els.cbLog.disabled = false; els.cbLog.checked = false; }
-		if (els.warnLog)  els.warnLog.style.display = 'none';
+		var ids = ['bk_progress', 'bk_status', 'bk_btnStart', 'bk_cbJS', 'bk_warnJS', 'bk_cbLog', 'bk_warnLog'];
+		var els = {};
+		ids.forEach(function (id) { els[id] = document.getElementById(id); });
+
+		if (els['bk_progress'])  { els['bk_progress'].style.display = 'none'; els['bk_progress'].value = 0; }
+		if (els['bk_status'])    els['bk_status'].textContent = '';
+		if (els['bk_btnStart'])  { els['bk_btnStart'].disabled = false; els['bk_btnStart'].textContent = str_BackupStart; }
+		if (els['bk_cbJS'])      { els['bk_cbJS'].disabled = false; els['bk_cbJS'].checked = false; }
+		if (els['bk_warnJS'])    els['bk_warnJS'].style.display = 'none';
+		if (els['bk_cbLog'])     { els['bk_cbLog'].disabled = false; els['bk_cbLog'].checked = false; }
+		if (els['bk_warnLog'])   els['bk_warnLog'].style.display = 'none';
+	}
+
+	function makeOptRow(cbId, warnId, labelText, warnText) {
+		var row = document.createElement('div');
+		row.style.marginBottom = '4px';
+		var cb = document.createElement('input');
+		cb.type = 'checkbox'; cb.id = cbId;
+		var lbl = document.createElement('label');
+		lbl.htmlFor = cbId;
+		lbl.textContent = ' ' + labelText;
+		var warn = document.createElement('div');
+		warn.id = warnId;
+		warn.style.cssText = 'display:none;margin-left:22px;color:#888;font-size:12px;';
+		warn.textContent = warnText;
+		cb.addEventListener('change', function () {
+			warn.style.display = this.checked ? 'block' : 'none';
+		});
+		row.appendChild(cb); row.appendChild(lbl);
+		return [row, warn];
 	}
 
 	function buildModal() {
@@ -199,28 +245,19 @@
 		var cbCfg = document.createElement('input');
 		cbCfg.type = 'checkbox'; cbCfg.checked = true; cbCfg.disabled = true;
 		var lblCfg = document.createElement('label');
-		lblCfg.textContent = ' ' + str_BackupConfig;
+		lblCfg.textContent = ' ' + str_BackupConfig;
 		rowCfg.appendChild(cbCfg); rowCfg.appendChild(lblCfg);
 		box.appendChild(rowCfg);
 
+		// JS checkbox
+		var jsElems = makeOptRow('bk_cbJS', 'bk_warnJS', str_BackupJS, str_BackupJSWarn);
+		box.appendChild(jsElems[0]);
+		box.appendChild(jsElems[1]);
+
 		// Log checkbox
-		var rowLog = document.createElement('div');
-		rowLog.style.marginBottom = '4px';
-		var cbLog = document.createElement('input');
-		cbLog.type = 'checkbox'; cbLog.id = 'bk_cbLog';
-		var lblLog = document.createElement('label');
-		lblLog.htmlFor = 'bk_cbLog';
-		lblLog.textContent = ' ' + str_BackupLogs;
-		var warnLog = document.createElement('div');
-		warnLog.id = 'bk_warnLog';
-		warnLog.style.cssText = 'display:none;margin-left:22px;color:#888;font-size:12px;';
-		warnLog.textContent = str_BackupLogsWarn;
-		cbLog.addEventListener('change', function () {
-			warnLog.style.display = this.checked ? 'block' : 'none';
-		});
-		rowLog.appendChild(cbLog); rowLog.appendChild(lblLog);
-		box.appendChild(rowLog);
-		box.appendChild(warnLog);
+		var logElems = makeOptRow('bk_cbLog', 'bk_warnLog', str_BackupLogs, str_BackupLogsWarn);
+		box.appendChild(logElems[0]);
+		box.appendChild(logElems[1]);
 
 		// Jelszó megjegyzés
 		var pwdNote = document.createElement('div');
@@ -247,7 +284,6 @@
 		btnStart.textContent = str_BackupStart;
 		btnStart.addEventListener('click', startBackup);
 		var btnCancel = document.createElement('button');
-		btnCancel.id = 'bk_btnCancel';
 		btnCancel.textContent = str_Cancel;
 		btnCancel.style.marginLeft = '8px';
 		btnCancel.addEventListener('click', closeModal);
