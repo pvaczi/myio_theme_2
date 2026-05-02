@@ -44,12 +44,14 @@
 		list.push('htm/setupnav.htm');
 
 		var rootFiles = [
-			'backup.jsn',
+			'info.json', 'backup.jsn',
 			'f_desc.xml', 'g_desc.xml', 'h_desc.xml', 'p_desc.xml',
 			'r_desc.xml', 's_desc.xml', 'slo_desc.xml', 't_desc.xml',
 			'sensors.bak', 'username.xml', 'timer.csv'
 		];
 		rootFiles.forEach(function (f) { list.push(f); });
+
+		['dict/places.jsn', 'dict/speech.jsn', 'dict/subject.jsn'].forEach(function (f) { list.push(f); });
 
 		var slotFiles = [
 			'globals.xml', 'relays.xml', 'fet.xml',
